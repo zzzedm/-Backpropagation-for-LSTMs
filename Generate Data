@@ -1,0 +1,14 @@
+import numpy as np
+import scipy.io as sio
+import string
+
+dict = list(string.ascii_lowercase)
+dict.append(' ')
+sentence = 'optimization is not fun and the exam was too hard'
+sentence = [dict.index(sentence[ii]) for ii in range(len(sentence))]
+Xtrain = [sentence[:-1]]
+Ytrain = [sentence[1:]]
+ 
+np.random.seed(0)
+model = LSTM(dict,alpha=0.01,hidden_dim=20,no_epoch=1)
+
