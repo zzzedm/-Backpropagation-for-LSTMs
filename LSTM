@@ -1,0 +1,254 @@
+class LSTM:
+ 
+    def __init__(self, vocab, hidden_dim=10, alpha=0.01, no_epoch=1000):
+        # P is the size of the vocabulary, N is the dim of hidden var
+        # alpha is the learning rate
+        self.vocab = vocab
+        self.P = len(vocab)
+        self.N = hidden_dim
+        self.alpha = alpha
+        self.epoch = no_epoch
+        # Randomly initialize the network parameters
+        np.random.seed(0)
+        self.V=np.random.uniform(-1/np.sqrt(self.N),1/np.sqrt(self.N),size=(self.P,self.N))
+        self.Uo=np.random.uniform(-1/np.sqrt(self.P),1/np.sqrt(self.P),size=(self.N,self.P))
+        self.Wo=np.random.uniform(-1/np.sqrt(self.N),1/np.sqrt(self.N),size=(self.N,self.N))
+        self.Ui=np.random.uniform(-1/np.sqrt(self.P),1/np.sqrt(self.P),size=(self.N,self.P))
+        self.Wi=np.random.uniform(-1/np.sqrt(self.N),1/np.sqrt(self.N),size=(self.N,self.N))
+        self.Uf=np.random.uniform(-1/np.sqrt(self.P),1/np.sqrt(self.P),size=(self.N,self.P))
+        self.Wf=np.random.uniform(-1/np.sqrt(self.N),1/np.sqrt(self.N),size=(self.N,self.N))
+        self.Ug=np.random.uniform(-1/np.sqrt(self.P),1/np.sqrt(self.P),size=(self.N,self.P))
+        self.Wg=np.random.uniform(-1/np.sqrt(self.N),1/np.sqrt(self.N),size=(self.N,self.N))
+ 
+    def fp(self,x):
+        # fill in this function yourself
+        # forward propagation
+        T = len(x)
+
+        f = np.zeros((self.N,T))
+        f[:,0] = sigmoid(self.Uf[:,x[0]])
+        i = np.zeros((self.N,T))
+        i[:,0] = sigmoid(self.Ui[:,x[0]])
+        o = np.zeros((self.N,T))
+        o[:,0] = sigmoid(self.Uo[:,x[0]])
+        g = np.zeros((self.N,T))
+        g[:,0] = tanh(self.Ug[:,x[0]])
+        c = np.zeros((self.N,T))
+        c[:,0] = np.dot(i[:,0],g[:,0])
+        s = np.zeros((self.N,T))
+        s[:,0] = np.dot(o[:,0],tanh(c[:,0]))
+        p = np.zeros((self.P,T))
+        p[:,0] = softmax(np.dot(self.V,s[:,0]))
+
+        for t in range(1,T):
+          f[:,t] = sigmoid(self.Uf[:,x[t]]+np.dot(self.Wf,s[:,t-1]))
+          i[:,t] = sigmoid(self.Ui[:,x[t]]+np.dot(self.Wi,s[:,t-1]))
+          g[:,t] = tanh(self.Ug[:,x[t]]+np.dot(self.Wg,s[:,t-1]))
+          c[:,t] = np.multiply(f[:,t],c[:,t-1])+np.multiply(i[:,t],g[:,t])
+          o[:,t] = sigmoid(self.Uo[:,x[t]]+np.dot(self.Wo,s[:,t-1]))
+          s[:,t] = np.multiply(o[:,t],tanh(c[:,t]))
+          p[:,t] = softmax(np.dot(self.V,s[:,t]))
+
+        return (o,i,f,g,c,s,p)
+ 
+    def loss_1pt(self,x,y):
+        # calculate loss for 1 data pt; this is simply negative log-likelihood
+        (o,i,f,g,c,s,p) = self.fp(x)
+        return np.sum(-np.log(p[y,np.arange(len(x))]))
+ 
+    def backprop(self,x,y):
+        # fill in this function yourself
+        # backprop derivative calculation
+        xe = np.eye(self.P)[x]
+        ye = np.eye(self.P)[y]
+        (o, i, f, g, c, s, p) = self.fp(x)
+        p = p.T
+        s = s.T
+        c = c.T
+        o = o.T
+        g = g.T
+        i = i.T
+        f = f.T
+        
+        dUo = np.zeros_like(self.Uo)
+        dUi = np.zeros_like(self.Ui)
+        dUf = np.zeros_like(self.Uf)
+        dWo = np.zeros_like(self.Wo)
+        dWi = np.zeros_like(self.Wi)
+        dWf = np.zeros_like(self.Wf)
+        dUg = np.zeros_like(self.Ug)
+        dWg = np.zeros_like(self.Wg)
+        dV  = np.zeros_like(self.V)
+
+        dc = 0.
+        dh = 0.
+        for k in range(len(x)):
+            index = len(x) - k - 1
+
+            dz = p[index] - ye[index]
+            dV += np.dot(dz[:, np.newaxis], s[index][np.newaxis, :])
+            dh += np.dot(self.V.T, dz)
+
+            do = dh * tanh(c[index])
+            dc += dh * (1.0 - tanh(c[index]) ** 2) * o[index]
+
+            di = dc * g[index]
+            dg = dc * i[index]
+            if index!=0:
+              df = dc * (c[index-1]) 
+            else:
+              df = dc * np.zeros_like(c[0])
+
+            dc = dc * f[index]
+
+            do = o[index] * (1.0 - o[index]) * do
+            df = f[index] * (1.0 - f[index]) * df
+            di = i[index] * (1.0 - i[index]) * di
+            dg = (1.0 - g[index] ** 2) * dg
+            
+            if index==0:
+              s_old = np.zeros_like(s[0])
+            else:
+              s_old = s[index-1]
+
+            dUo += np.dot(do[:, np.newaxis], xe[index][np.newaxis, :])
+            dWo += np.dot(do[:, np.newaxis], s_old[np.newaxis, :])
+
+            dUf += np.dot(df[:, np.newaxis], xe[index][np.newaxis, :])
+            dWf += np.dot(df[:, np.newaxis], s_old[np.newaxis, :])
+
+            dUi += np.dot(di[:, np.newaxis], xe[index][np.newaxis, :])
+            dWi += np.dot(di[:, np.newaxis], s_old[np.newaxis, :])
+
+            dUg += np.dot(dg[:, np.newaxis], xe[index][np.newaxis, :])
+            dWg += np.dot(dg[:, np.newaxis], s_old[np.newaxis, :])
+
+            dh = np.dot(self.Wo.T, do) + np.dot(self.Wi.T, di) + np.dot(self.Wf.T, df)+ np.dot(self.Wg.T, dg)
+
+        return (dUo, dUi, dUf, dUg, dWo, dWi, dWf, dWg, dV)
+
+ 
+    def gd_one_step(self,x,y):
+        # compute gradients using backprop
+        (dUo,dUi,dUf,dUg,dWo,dWi,dWf,dWg,dV) = self.backprop(x,y)
+ 
+        # gradient check!!!
+        # compute gradients numerically
+        dWi_check = np.zeros((self.N,self.N))
+        dWf_check = np.zeros((self.N,self.N))
+        dWg_check = np.zeros((self.N,self.N))
+        dWo_check = np.zeros((self.N,self.N))
+        dUi_check = np.zeros((self.N,self.P))
+        dUo_check = np.zeros((self.N,self.P))
+        dUf_check = np.zeros((self.N,self.P))
+        dUg_check = np.zeros((self.N,self.P))
+        dV_check = np.zeros((self.P,self.N))
+        d = .0001
+        for ii in range(self.N):
+            for jj in range(self.N):
+                self.Wi[ii,jj] -= d
+                cost_minus = self.loss_1pt(x,y)
+                self.Wi[ii,jj] += 2 * d
+                cost_plus = self.loss_1pt(x,y)
+                dWi_check[ii,jj] = (cost_plus - cost_minus) / (2.0 * d)
+                self.Wi[ii,jj] -= d
+            for jj in range(self.N):
+                self.Wf[ii,jj] -= d
+                cost_minus = self.loss_1pt(x,y)
+                self.Wf[ii,jj] += 2 * d
+                cost_plus = self.loss_1pt(x,y)
+                dWf_check[ii,jj] = (cost_plus - cost_minus) / (2.0 * d)
+                self.Wf[ii,jj] -= d
+            for jj in range(self.N):
+                self.Wg[ii,jj] -= d
+                cost_minus = self.loss_1pt(x,y)
+                self.Wg[ii,jj] += 2 * d
+                cost_plus = self.loss_1pt(x,y)
+                dWg_check[ii,jj] = (cost_plus - cost_minus) / (2.0 * d)
+                self.Wg[ii,jj] -= d
+            for jj in range(self.N):
+                self.Wo[ii,jj] -= d
+                cost_minus = self.loss_1pt(x,y)
+                self.Wo[ii,jj] += 2 * d
+                cost_plus = self.loss_1pt(x,y)
+                dWo_check[ii,jj] = (cost_plus - cost_minus) / (2.0 * d)
+                self.Wo[ii,jj] -= d
+            for jj in range(self.P):
+                self.Ui[ii,jj] -= d
+                cost_minus = self.loss_1pt(x,y)
+                self.Ui[ii,jj] += 2 * d
+                cost_plus = self.loss_1pt(x,y)
+                dUi_check[ii,jj] = (cost_plus - cost_minus) / (2.0 * d)
+                self.Ui[ii,jj] -= d
+            for jj in range(self.P):
+                self.Uo[ii,jj] -= d
+                cost_minus = self.loss_1pt(x,y)
+                self.Uo[ii,jj] += 2 * d
+                cost_plus = self.loss_1pt(x,y)
+                dUo_check[ii,jj] = (cost_plus - cost_minus) / (2.0 * d)
+                self.Uo[ii,jj] -= d
+            for jj in range(self.P):
+                self.Uf[ii,jj] -= d
+                cost_minus = self.loss_1pt(x,y)
+                self.Uf[ii,jj] += 2 * d
+                cost_plus = self.loss_1pt(x,y)
+                dUf_check[ii,jj] = (cost_plus - cost_minus) / (2.0 * d)
+                self.Uf[ii,jj] -= d
+            for jj in range(self.P):
+                self.Ug[ii,jj] -= d
+                cost_minus = self.loss_1pt(x,y)
+                self.Ug[ii,jj] += 2 * d
+                cost_plus = self.loss_1pt(x,y)
+                dUg_check[ii,jj] = (cost_plus - cost_minus) / (2.0 * d)
+                self.Ug[ii,jj] -= d
+ 
+        for ii in range(self.P):
+            for jj in range(self.N):
+                self.V[ii,jj] -= d
+                cost_minus = self.loss_1pt(x,y)
+                self.V[ii,jj] += 2 * d
+                cost_plus = self.loss_1pt(x,y)
+                dV_check[ii,jj] = (cost_plus - cost_minus) / (2.0 * d)
+                self.V[ii,jj] -= d
+ 
+        # print the difference between the two gradients
+        print(np.max(np.abs(dWi-dWi_check))) 
+        print(np.max(np.abs(dWf-dWf_check))) 
+        print(np.max(np.abs(dWg-dWg_check))) 
+        print(np.max(np.abs(dWo-dWo_check))) 
+        print(np.max(np.abs(dUi-dUi_check))) 
+        print(np.max(np.abs(dUf-dUf_check)))
+        print(np.max(np.abs(dUg-dUg_check)))
+        print(np.max(np.abs(dUo-dUo_check)))
+        print(np.max(np.abs(dV-dV_check))) 
+ 
+        self.Uo -= self.alpha * dUo
+        self.Ui -= self.alpha * dUi
+        self.Uf -= self.alpha * dUf
+        self.Ug -= self.alpha * dUg
+ 
+        self.Wo -= self.alpha * dWo
+        self.Wi -= self.alpha * dWi
+        self.Wf -= self.alpha * dWf
+        self.Wg -= self.alpha * dWg
+ 
+        self.V -= self.alpha * dV
+ 
+    def train(self,X_train,Y_train):
+        # the training algorithm
+        no_pts = len(X_train)
+        cr = np.zeros((self.epoch,))
+        for it in range(self.epoch):
+            # do gradient descent
+            for ii in range(no_pts):
+                self.gd_one_step(X_train[ii],Y_train[ii])
+            # calculate loss
+            cost = 0.0
+            for ii in range(no_pts):
+                cost += self.loss_1pt(X_train[ii],Y_train[ii])
+            # record and adjust learning rate and print stuff
+            cr[it] = cost
+            # print(it,cost)
+            if it > self.epoch / 10:
+                if cr[it] > cr[it-1]:
+                    self.alpha /= 2.0
