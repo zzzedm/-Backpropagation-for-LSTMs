@@ -1,0 +1,7 @@
+Background: 2D total variation denoising is most often used in digital image processing to remove noise. 
+By minimizing the particular cost function for the TV filter, we can then get the ideal denoised image. 
+Instead of merely do the operation on one vector, we need to operate each row and column of matrix(image). 
+The two famous total varition methods are isotropic method and anisotropic method. 
+We used anisotropic methods which calculate the norm 1 of the difference. 
+In this project, we mainly searched and implemented two different methods to denoise a noisy-image. 
+They are CNN and ROF. In the result result, we will also discuss the performance of each algorithm.
